@@ -172,8 +172,6 @@ If the LINK type is not supported by org-transclusion, or \\[universal-argument]
 is used (ARG is non-nil), then use the standard `org-link-open'."
   (let ((tc-params nil))
     (cond
-     ;; Check the link is meant for translusion
-     ((not (org-transclusion--ok-to-transclude)) (org-link-open link arg))
      ;; Check if ARG is passed
      (arg (org-link-open link arg))
      ;; For Org-ID
@@ -393,7 +391,6 @@ buffer
 tc-content :: the actual text content to be transcluded"
   ;; Remove #+transclude keyword
   ;; Assume in the beginning of a link
-  (when (org-transclusion--ok-to-transclude)
     (let* ((keyword-values (org-transclusion--get-keyword-values))
            (tc-type (plist-get tc-params :tc-type))
            (tc-arg (plist-get tc-params :tc-arg))
@@ -407,24 +404,12 @@ tc-content :: the actual text content to be transcluded"
           (message "Nothing done. No content is found through the link.")
         ;; Do creation only when there is content to be transcluded
         (save-excursion
-          (forward-line -1)
-          (beginning-of-line)
-          ;; Assume there is no space or line feed between the keyword and link in question
-          (let* ((elm (org-element-at-point))
-                 (beg (org-element-property :begin elm))
-                 (end (org-element-property :end elm)))
-            (delete-region beg end))
-          ;; Remove the link
           (when-let ((link-loc (org-transclusion--get-link-location))
                      (link-beg (plist-get link-loc ':begin))
                      (link-end (plist-get link-loc ':end))
                      (raw-link (buffer-substring-no-properties link-beg link-end)))
-            (delete-region link-beg link-end)
-            ;; Delete a char after the link has been removed to remove the line
-            ;; the link used to occupy. Without this, you end up moving one line
-            ;; every time add operation is called.
-            (unless (eobp) (delete-char 1))
             ;; Add content and overlay
+            (org-forward-element)
             (let* ((tc-raw-link raw-link)
                    (beg (point)) ;; at the beginning of the text content before inserting it
                    (beg-mkr (point-marker))) ;; for source overlay
@@ -464,7 +449,7 @@ tc-content :: the actual text content to be transcluded"
                 (overlay-put ov-src 'tc-by beg-mkr)
                 (overlay-put ov-src 'evaporate t)
                 (overlay-put ov-src 'face 'org-transclusion-source-block)
-                (overlay-put ov-src 'tc-pair tc-pair)))))))))
+                (overlay-put ov-src 'tc-pair tc-pair))))))))
 
 (defun org-transclusion-remove-at-point (pos &optional mode stars)
   "Remove transclusion and the copied text around POS.
@@ -492,13 +477,7 @@ headlines."
                                   (lambda (v) (if (symbolp v) (symbol-name v) v))
                                   (overlay-get ov 'tc-keyword-values) " "))
                  (t-or-nil)
-                 (new-beg (progn
-                            (goto-char beg)
-                            (newline)
-                            (forward-line -1)
-                            (insert raw-link)
-                            (forward-line)
-                            (point)))
+                 (new-beg beg)
                  (new-end (overlay-end ov))
                  (tc-pair (overlay-get ov 'tc-pair)))
             ;;Remove overlays
@@ -518,13 +497,7 @@ headlines."
                 ;; We want to stop adding it back again.
                 (if (called-interactively-p 'interactive) (setq t-or-nil "nil")
                   (setq t-or-nil "t"))
-                (delete-region new-beg new-end))))
-            ;; Add back #+transclusion:
-            (goto-char beg)
-            (when (eq mode 'stars)
-              (unless stars (setq stars 1))
-              (insert (propertize (make-string stars ?*) 'tc-metamove t) " "))
-            (insert (concat "#+transclude: " t-or-nil " " keyword-values "\n")))))
+                (delete-region new-beg new-end)))))))
     ;; The message below is common for all the modes
     (message "Nothing done. No transclusion exists here.")))
 
@@ -749,6 +722,16 @@ buffers."
   (goto-char org-transclusion-original-position)
   (setq org-transclusion-original-position nil)
   (set-buffer-modified-p nil))
+
+(defun org-transclusion-transclude-all-links-in-buffer ()
+  "Translcue all links.
+Can be disabled using #+don't-transclude.
+Can be thought of as negative of #+translude."
+  )
+
+(defun org-transclusion-transclude-at-point ()
+  "Transclude link at point. Ignores any meta data."
+  )
 
 (defun org-transclusion-add-all-in-buffer ()
   "Add all the transclusions in the current buffer.
