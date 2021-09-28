@@ -40,6 +40,7 @@
 (require 'org)
 (require 'org-element)
 (require 'org-id)
+(require 'org-roam)
 
 ;;-----------------------------------------------------------------------------
 ;; Variables
@@ -170,7 +171,9 @@ with `org-link-open'."
   "Check the LINK can be transcluded, and open it to transclude its content.
 If the LINK type is not supported by org-transclusion, or \\[universal-argument]
 is used (ARG is non-nil), then use the standard `org-link-open'."
-  (let ((tc-params nil))
+  (let ((tc-params nil)
+        kill-buffer-path
+        file)
     (cond
      ;; Check if ARG is passed
      (arg (org-link-open link arg))
@@ -178,7 +181,9 @@ is used (ARG is non-nil), then use the standard `org-link-open'."
      ((string= "id" (org-element-property :type link))
       ;; when type is id, the value of path is the id
       (let* ((id (org-element-property :path link))
-             (mkr (ignore-errors (org-id-find id t))))
+             (file-path (org-roam-id-get-file id))
+             (kill-buffer-path (unless (find-buffer-visiting file-path) file-path))
+             (mkr (ignore-errors (org-id-find-id-in-file id file-path t))))
         (if mkr (progn
                   (setq tc-params (list :tc-type "org-id"
                                         :tc-arg mkr
@@ -194,7 +199,8 @@ is used (ARG is non-nil), then use the standard `org-link-open'."
      ;;All the other cases
      (t (message "No transclusion added.")))
     ;; Do transclusion when tc-params are populated
-    (when tc-params (org-transclusion--create-at-point tc-params))))
+    (when tc-params (org-transclusion--create-at-point tc-params))
+    (when kill-buffer-path (kill-buffer (find-buffer-visiting kill-buffer-path)))))
 
 ;; Not used but might be useful...
 ;; (defun org-transclusion-marker-open (marker)
